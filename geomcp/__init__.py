@@ -16,7 +16,7 @@ from .geo_downloader import download_geo
 __all__ = [
     "main",
     "search_geo",
-    "search_geo_profiles", 
+    "search_geo_profiles",
     "search_geo_datasets",
-    "download_geo"
-] 
+    "download_geo",
+]

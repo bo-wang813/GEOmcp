@@ -8,7 +8,7 @@
 
 [![PyPI version](https://badge.fury.io/py/geo-mcp.svg)](https://pypi.org/project/geo-mcp/)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-BSD--3--Clause-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Protocol-blue.svg)](https://modelcontextprotocol.io/)
 [![GEO](https://img.shields.io/badge/GEO-NCBI-orange.svg)](https://www.ncbi.nlm.nih.gov/geo/)
 
