@@ -219,7 +219,9 @@ Examples:
         default=None,
         help=argparse.SUPPRESS,
     )
-    parser.add_argument("--version", action="version", version="geo-mcp 0.1.2")
+    from . import __version__
+
+    parser.add_argument("--version", action="version", version=f"geo-mcp {__version__}")
 
     args = parser.parse_args()
 

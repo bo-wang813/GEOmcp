@@ -37,7 +37,7 @@ class GEOMCPServer:
             if not term:
                 raise ValueError("term parameter is required")
 
-            result = geo_profiles.search_geo(term, retmax, record_types)
+            result = await geo_profiles.search_geo(term, retmax, record_types)
 
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -51,7 +51,7 @@ class GEOMCPServer:
             if not term:
                 raise ValueError("term parameter is required")
 
-            result = geo_profiles.search_geo_profiles(term, retmax)
+            result = await geo_profiles.search_geo_profiles(term, retmax)
 
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -65,7 +65,7 @@ class GEOMCPServer:
             if not term:
                 raise ValueError("term parameter is required")
 
-            result = geo_profiles.search_geo_datasets(term, retmax)
+            result = await geo_profiles.search_geo_datasets(term, retmax)
 
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -79,7 +79,7 @@ class GEOMCPServer:
             if not term:
                 raise ValueError("term parameter is required")
 
-            result = geo_profiles.search_geo_series(term, retmax)
+            result = await geo_profiles.search_geo_series(term, retmax)
 
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -93,7 +93,7 @@ class GEOMCPServer:
             if not term:
                 raise ValueError("term parameter is required")
 
-            result = geo_profiles.search_geo_samples(term, retmax)
+            result = await geo_profiles.search_geo_samples(term, retmax)
 
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -107,7 +107,7 @@ class GEOMCPServer:
             if not term:
                 raise ValueError("term parameter is required")
 
-            result = geo_profiles.search_geo_platforms(term, retmax)
+            result = await geo_profiles.search_geo_platforms(term, retmax)
 
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -411,7 +411,7 @@ async def handle_call_tool(name: str, arguments: dict):
         if name == "search_geo":
             from . import geo_profiles
 
-            result = geo_profiles.search_geo(
+            result = await geo_profiles.search_geo(
                 arguments.get("term", ""),
                 arguments.get("retmax", 20),
                 arguments.get("record_types"),
@@ -420,35 +420,35 @@ async def handle_call_tool(name: str, arguments: dict):
         elif name == "search_geo_profiles":
             from . import geo_profiles
 
-            result = geo_profiles.search_geo_profiles(
+            result = await geo_profiles.search_geo_profiles(
                 arguments.get("term", ""), arguments.get("retmax", 20)
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         elif name == "search_geo_datasets":
             from . import geo_profiles
 
-            result = geo_profiles.search_geo_datasets(
+            result = await geo_profiles.search_geo_datasets(
                 arguments.get("term", ""), arguments.get("retmax", 20)
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         elif name == "search_geo_series":
             from . import geo_profiles
 
-            result = geo_profiles.search_geo_series(
+            result = await geo_profiles.search_geo_series(
                 arguments.get("term", ""), arguments.get("retmax", 20)
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         elif name == "search_geo_samples":
             from . import geo_profiles
 
-            result = geo_profiles.search_geo_samples(
+            result = await geo_profiles.search_geo_samples(
                 arguments.get("term", ""), arguments.get("retmax", 20)
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
         elif name == "search_geo_platforms":
             from . import geo_profiles
 
-            result = geo_profiles.search_geo_platforms(
+            result = await geo_profiles.search_geo_platforms(
                 arguments.get("term", ""), arguments.get("retmax", 20)
             )
             return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
