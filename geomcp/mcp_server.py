@@ -1,182 +1,111 @@
-#!/usr/bin/env python3
+"""MCP server wiring for GEO.
+
+Exposes one ``@server.list_tools()`` handler and one ``@server.call_tool()``
+dispatcher. The MCP Python SDK registers *one* handler per request type,
+not one per tool — ``func`` is invoked as ``func(tool_name, arguments)``.
+An earlier rewrite called ``@server.call_tool()`` once per tool with a
+single-argument handler, which meant every tool call silently routed to
+the *last* registered function (``cleanup_downloads_tool``) and blew up
+with an arg-count mismatch. All calls now go through :func:`handle_call_tool`.
 """
-MCP Server for GEO (Gene Expression Omnibus) Data
-Handles MCP protocol and tool definitions for accessing GEO data through NCBI E-Utils
-"""
+
+from __future__ import annotations
 
 import json
 import logging
-from typing import List
-from mcp.server import Server
+from typing import Any, Dict, List
+
 import mcp.types as types
-from . import geo_profiles, geo_downloader
+from mcp.server import Server
+
+from . import geo_downloader, geo_profiles
 
 logger = logging.getLogger("geo-mcp-server")
 
 
+async def handle_call_tool(
+    name: str, arguments: Dict[str, Any]
+) -> List[types.TextContent]:
+    """Dispatch a tool call by name. Shared by the MCP and HTTP servers.
+
+    Attribute lookups on ``geo_profiles`` / ``geo_downloader`` happen at
+    call time so tests can monkeypatch the underlying functions.
+    """
+    arguments = arguments or {}
+
+    if name == "search_geo":
+        result: Any = await geo_profiles.search_geo(
+            arguments.get("term", ""),
+            arguments.get("retmax", 20),
+            arguments.get("record_types"),
+        )
+    elif name == "search_geo_profiles":
+        result = await geo_profiles.search_geo_profiles(
+            arguments.get("term", ""), arguments.get("retmax", 20)
+        )
+    elif name == "search_geo_datasets":
+        result = await geo_profiles.search_geo_datasets(
+            arguments.get("term", ""), arguments.get("retmax", 20)
+        )
+    elif name == "search_geo_series":
+        result = await geo_profiles.search_geo_series(
+            arguments.get("term", ""), arguments.get("retmax", 20)
+        )
+    elif name == "search_geo_samples":
+        result = await geo_profiles.search_geo_samples(
+            arguments.get("term", ""), arguments.get("retmax", 20)
+        )
+    elif name == "search_geo_platforms":
+        result = await geo_profiles.search_geo_platforms(
+            arguments.get("term", ""), arguments.get("retmax", 20)
+        )
+    elif name == "download_geo_data":
+        result = await geo_downloader.download_geo(
+            arguments.get("geo_id", ""),
+            arguments.get("db_type", "gse"),
+            arguments.get("output_dir"),
+        )
+    elif name == "get_download_status":
+        result = geo_downloader.get_download_status(
+            arguments.get("geo_id", ""), arguments.get("db_type", "gse")
+        )
+    elif name == "list_downloaded_datasets":
+        result = geo_downloader.list_downloaded_datasets(arguments.get("db_type"))
+    elif name == "get_download_stats":
+        result = geo_downloader.get_download_stats()
+    elif name == "cleanup_downloads_tool":
+        result = geo_downloader.cleanup_downloads(
+            arguments.get("geo_id"), arguments.get("db_type")
+        )
+    else:
+        raise ValueError(f"Unknown tool: {name}")
+
+    return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
 class GEOMCPServer:
-    """
-    MCP Server implementation for GEO Data Access
-    Handles MCP protocol and tool definitions for Gene Expression Omnibus
-    """
+    """Owns the :class:`Server` instance and its tool registry."""
 
-    def __init__(self):
-        self.server = Server("geo-mcp")
-        self._setup_tools()
+    def __init__(self) -> None:
+        self.server: Server = Server("geo-mcp")
+        self._register()
 
-    def _setup_tools(self):
-        """Register all available GEO tools"""
+    def _register(self) -> None:
+        @self.server.list_tools()
+        async def _list_tools() -> List[types.Tool]:
+            return self.get_tool_definitions()
 
         @self.server.call_tool()
-        async def search_geo(arguments: dict) -> list[types.TextContent]:
-            """Search GEO for all types of records (GSE, GSM, GPL, GDS)"""
-            term = arguments.get("term", "")
-            retmax = arguments.get("retmax", 20)
-            record_types = arguments.get("record_types")
-
-            if not term:
-                raise ValueError("term parameter is required")
-
-            result = await geo_profiles.search_geo(term, retmax, record_types)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # GEO Profiles search
-        @self.server.call_tool()
-        async def search_geo_profiles(arguments: dict) -> list[types.TextContent]:
-            """Search GEO Profiles database"""
-            term = arguments.get("term", "")
-            retmax = arguments.get("retmax", 20)
-
-            if not term:
-                raise ValueError("term parameter is required")
-
-            result = await geo_profiles.search_geo_profiles(term, retmax)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # GEO Datasets search
-        @self.server.call_tool()
-        async def search_geo_datasets(arguments: dict) -> list[types.TextContent]:
-            """Search GEO Datasets (GDS) specifically"""
-            term = arguments.get("term", "")
-            retmax = arguments.get("retmax", 20)
-
-            if not term:
-                raise ValueError("term parameter is required")
-
-            result = await geo_profiles.search_geo_datasets(term, retmax)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # GEO Series search
-        @self.server.call_tool()
-        async def search_geo_series(arguments: dict) -> list[types.TextContent]:
-            """Search GEO Series (GSE) specifically"""
-            term = arguments.get("term", "")
-            retmax = arguments.get("retmax", 20)
-
-            if not term:
-                raise ValueError("term parameter is required")
-
-            result = await geo_profiles.search_geo_series(term, retmax)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # GEO Samples search
-        @self.server.call_tool()
-        async def search_geo_samples(arguments: dict) -> list[types.TextContent]:
-            """Search GEO Samples (GSM) specifically"""
-            term = arguments.get("term", "")
-            retmax = arguments.get("retmax", 20)
-
-            if not term:
-                raise ValueError("term parameter is required")
-
-            result = await geo_profiles.search_geo_samples(term, retmax)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # GEO Platforms search
-        @self.server.call_tool()
-        async def search_geo_platforms(arguments: dict) -> list[types.TextContent]:
-            """Search GEO Platforms (GPL) specifically"""
-            term = arguments.get("term", "")
-            retmax = arguments.get("retmax", 20)
-
-            if not term:
-                raise ValueError("term parameter is required")
-
-            result = await geo_profiles.search_geo_platforms(term, retmax)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # Download GEO data
-        @self.server.call_tool()
-        async def download_geo_data(arguments: dict) -> list[types.TextContent]:
-            """Download GEO data files"""
-            geo_id = arguments.get("geo_id", "")
-            db_type = arguments.get("db_type", "gse")
-            output_dir = arguments.get("output_dir")
-
-            if not geo_id:
-                raise ValueError("geo_id parameter is required")
-
-            result = await geo_downloader.download_geo(geo_id, db_type, output_dir)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # Get download status
-        @self.server.call_tool()
-        async def get_download_status(arguments: dict) -> list[types.TextContent]:
-            """Check download status of a GEO dataset"""
-            geo_id = arguments.get("geo_id", "")
-            db_type = arguments.get("db_type", "gse")
-
-            if not geo_id:
-                raise ValueError("geo_id parameter is required")
-
-            result = geo_downloader.get_download_status(geo_id, db_type)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # List downloaded datasets
-        @self.server.call_tool()
-        async def list_downloaded_datasets(arguments: dict) -> list[types.TextContent]:
-            """List all downloaded GEO datasets"""
-            db_type = arguments.get("db_type")
-
-            result = geo_downloader.list_downloaded_datasets(db_type)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # Get download statistics
-        @self.server.call_tool()
-        async def get_download_stats(arguments: dict) -> list[types.TextContent]:
-            """Get download statistics and limits"""
-            result = geo_downloader.get_download_stats()
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-
-        # Cleanup downloads
-        @self.server.call_tool()
-        async def cleanup_downloads_tool(arguments: dict) -> list[types.TextContent]:
-            """Clean up downloaded files"""
-            geo_id = arguments.get("geo_id")
-            db_type = arguments.get("db_type")
-
-            result = geo_downloader.cleanup_downloads(geo_id, db_type)
-
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+        async def _call_tool(
+            name: str, arguments: Dict[str, Any]
+        ) -> List[types.TextContent]:
+            return await handle_call_tool(name, arguments)
 
     def get_server(self) -> Server:
-        """Get the configured MCP server"""
         return self.server
 
     def get_tool_definitions(self) -> List[types.Tool]:
-        """Get all tool definitions for the GEO MCP server"""
         return [
-            # Universal GEO search
             types.Tool(
                 name="search_geo",
                 description="Search GEO for all types of records (GSE, GSM, GPL, GDS)",
@@ -201,7 +130,6 @@ class GEOMCPServer:
                     "required": ["term"],
                 },
             ),
-            # GEO Profiles search
             types.Tool(
                 name="search_geo_profiles",
                 description="Search GEO Profiles database for gene expression profiles",
@@ -221,7 +149,6 @@ class GEOMCPServer:
                     "required": ["term"],
                 },
             ),
-            # GEO Datasets search
             types.Tool(
                 name="search_geo_datasets",
                 description="Search GEO Datasets (GDS) - curated gene expression datasets",
@@ -241,7 +168,6 @@ class GEOMCPServer:
                     "required": ["term"],
                 },
             ),
-            # GEO Series search
             types.Tool(
                 name="search_geo_series",
                 description="Search GEO Series (GSE) - complete experiments",
@@ -261,7 +187,6 @@ class GEOMCPServer:
                     "required": ["term"],
                 },
             ),
-            # GEO Samples search
             types.Tool(
                 name="search_geo_samples",
                 description="Search GEO Samples (GSM) - individual samples",
@@ -281,7 +206,6 @@ class GEOMCPServer:
                     "required": ["term"],
                 },
             ),
-            # GEO Platforms search
             types.Tool(
                 name="search_geo_platforms",
                 description="Search GEO Platforms (GPL) - array/sequencing platforms",
@@ -301,7 +225,6 @@ class GEOMCPServer:
                     "required": ["term"],
                 },
             ),
-            # Download tool
             types.Tool(
                 name="download_geo_data",
                 description="Download GEO data files (SOFT format)",
@@ -325,7 +248,6 @@ class GEOMCPServer:
                     "required": ["geo_id"],
                 },
             ),
-            # Download status
             types.Tool(
                 name="get_download_status",
                 description="Check if a GEO dataset has been downloaded",
@@ -342,7 +264,6 @@ class GEOMCPServer:
                     "required": ["geo_id"],
                 },
             ),
-            # List downloads
             types.Tool(
                 name="list_downloaded_datasets",
                 description="List all downloaded GEO datasets",
@@ -356,13 +277,11 @@ class GEOMCPServer:
                     },
                 },
             ),
-            # Download stats
             types.Tool(
                 name="get_download_stats",
                 description="Get download statistics and limits",
                 inputSchema={"type": "object", "properties": {}},
             ),
-            # Cleanup downloads
             types.Tool(
                 name="cleanup_downloads_tool",
                 description="Clean up downloaded files",
@@ -383,107 +302,10 @@ class GEOMCPServer:
         ]
 
 
-# Create the server instance
 mcp_server = GEOMCPServer()
 server = mcp_server.get_server()
 
 
-# List tools for Claude Desktop integration
-@server.list_tools()
-async def handle_list_tools() -> list[types.Tool]:
-    """Return the list of available tools"""
+async def handle_list_tools() -> List[types.Tool]:
+    """Public symbol kept for ``mcp_http_server`` import compatibility."""
     return mcp_server.get_tool_definitions()
-
-
-# Handle tool calls for HTTP server
-async def handle_call_tool(name: str, arguments: dict):
-    """Handle tool calls from HTTP server"""
-    server_instance = mcp_server.get_server()
-
-    if (
-        hasattr(server_instance, "_call_tool_handlers")
-        and name in server_instance._call_tool_handlers
-    ):
-        handler = server_instance._call_tool_handlers[name]
-        return await handler(arguments)
-    else:
-        # Fallback: call functions directly
-        if name == "search_geo":
-            from . import geo_profiles
-
-            result = await geo_profiles.search_geo(
-                arguments.get("term", ""),
-                arguments.get("retmax", 20),
-                arguments.get("record_types"),
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "search_geo_profiles":
-            from . import geo_profiles
-
-            result = await geo_profiles.search_geo_profiles(
-                arguments.get("term", ""), arguments.get("retmax", 20)
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "search_geo_datasets":
-            from . import geo_profiles
-
-            result = await geo_profiles.search_geo_datasets(
-                arguments.get("term", ""), arguments.get("retmax", 20)
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "search_geo_series":
-            from . import geo_profiles
-
-            result = await geo_profiles.search_geo_series(
-                arguments.get("term", ""), arguments.get("retmax", 20)
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "search_geo_samples":
-            from . import geo_profiles
-
-            result = await geo_profiles.search_geo_samples(
-                arguments.get("term", ""), arguments.get("retmax", 20)
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "search_geo_platforms":
-            from . import geo_profiles
-
-            result = await geo_profiles.search_geo_platforms(
-                arguments.get("term", ""), arguments.get("retmax", 20)
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "download_geo_data":
-            from . import geo_downloader
-
-            result = await geo_downloader.download_geo(
-                arguments.get("geo_id", ""),
-                arguments.get("db_type", "gse"),
-                arguments.get("output_dir"),
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "get_download_status":
-            from . import geo_downloader
-
-            result = geo_downloader.get_download_status(
-                arguments.get("geo_id", ""), arguments.get("db_type", "gse")
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "list_downloaded_datasets":
-            from . import geo_downloader
-
-            result = geo_downloader.list_downloaded_datasets(arguments.get("db_type"))
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "get_download_stats":
-            from . import geo_downloader
-
-            result = geo_downloader.get_download_stats()
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        elif name == "cleanup_downloads_tool":
-            from . import geo_downloader
-
-            result = geo_downloader.cleanup_downloads(
-                arguments.get("geo_id"), arguments.get("db_type")
-            )
-            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
-        else:
-            raise ValueError(f"Unknown tool: {name}")

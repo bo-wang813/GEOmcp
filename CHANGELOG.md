@@ -51,6 +51,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every MCP tool call routed to `cleanup_downloads_tool` and blew up
+  with "takes 1 positional argument but 2 were given".**
+  `GEOMCPServer._setup_tools` called `@self.server.call_tool()` once per
+  tool with a single-argument handler. The MCP SDK registers *one*
+  handler per request type — each decorator call replaced the previous
+  one, so only the last-defined function (`cleanup_downloads_tool`) was
+  reachable — and invokes it as `func(name, arguments)`, which the
+  single-arg handlers could not accept. Replaced the 12 per-tool
+  registrations with a single dispatcher; every tool now routes by name
+  through `handle_call_tool(name, arguments)`. Regression pinned by
+  `tests/test_mcp_server.py`.
 - **Downloads broken for every valid accession since mid-2024.** NCBI
   retired its anonymous FTP endpoint and E-utilities now returns
   `https://ftp.ncbi.nlm.nih.gov/...` URLs. The old regex only matched
