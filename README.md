@@ -8,19 +8,14 @@
 
 [![PyPI version](https://badge.fury.io/py/geo-mcp.svg)](https://pypi.org/project/geo-mcp/)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-BSD--3--Clause-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Protocol-blue.svg)](https://modelcontextprotocol.io/)
 [![GEO](https://img.shields.io/badge/GEO-NCBI-orange.svg)](https://www.ncbi.nlm.nih.gov/geo/)
 
-> ⚠️ **Development Warning** ⚠️
-> 
-> **This project is currently in active development and is not yet production-ready.**
-> 
-> - The MCP stdio server is functional but may have bugs or incomplete features
-> - API endpoints and functionality may change without notice
-> - Use at your own risk and report any issues you encounter
-> 
-> We recommend testing thoroughly in a development environment before using in production.
+> **Status:** Beta. The MCP stdio and HTTP servers are both functional and in
+> day-to-day use. The public tool surface is stable for the 0.1.x line; internal
+> APIs and config defaults may still evolve. Please open an issue if you hit a
+> regression.
 
 A Model Context Protocol (MCP) server for accessing [GEO (Gene Expression Omnibus)](https://www.ncbi.nlm.nih.gov/geo/) data through NCBI E-Utils API.
 The tool will enable you to search for GEO datasets, series, samples, platforms, and profiles for your LLM.
@@ -35,9 +30,8 @@ pip install geo-mcp
 ```
 install from source
 ```bash
-# Clone the repo (if not already)
 git clone https://github.com/MCPmed/GEOmcp
-cd GEO_MCP
+cd GEOmcp
 pip install -e .
 ```
 
@@ -48,20 +42,29 @@ Run init to create a config file
 geo-mcp --init
 ```
 
-This will create a config file at `~/.geo-mcp/config.json` (auto-created on first run if missing).
-This file will contain the following:
+By default this writes to `$XDG_CONFIG_HOME/geomcp/config.json`
+(typically `~/.config/geomcp/config.json`). If you already have a legacy
+`~/.geo-mcp/config.json` from an older install, that location is still
+honored and `--init` will update it in place so nothing gets orphaned.
+
+The file contains:
 ```json
 {
     "base_url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
     "email": "your_email@example.com",
-    "api_key": "YOUR_API_KEY"
+    "api_key": "YOUR_API_KEY",
+    "download_dir": "~/.local/share/geomcp/downloads"
 }
 ```
 
-It will also print out a configuration template for your claude desktop configuration file.
-
 - `email` is required by NCBI.
-- `api_key` is optional but recommended for higher rate limits ([get one here](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/)).
+- `api_key` is optional but recommended for higher rate limits
+  ([get one here](https://ncbiinsights.ncbi.nlm.nih.gov/2017/11/02/new-api-keys-for-the-e-utilities/)).
+
+You can also skip the config file entirely and pass values via env vars
+(`GEOMCP_EMAIL`, `GEOMCP_API_KEY`, `GEOMCP_BASE_URL`, `GEOMCP_DOWNLOAD_DIR`)
+or CLI flags (`--email`, `--api-key`, `--download-dir`, ...). Precedence,
+highest wins: CLI flags → env vars → `config.json` → built-in defaults.
 
 ## Running the Server
 
@@ -111,69 +114,38 @@ This error means Claude Desktop cannot find the `geo-mcp` command. This is usual
 ---
 
 ## Troubleshooting
-- If you see `command not found: geo-mcp`, make sure you installed with the correct Python/conda environment and that its `bin` directory is in your PATH.
-- If the config file is missing, it will be auto-created on first run, or you can copy the template from `geo_mcp_server/config_template.json`.
+- If you see `command not found: geo-mcp`, make sure you installed into the
+  Python environment whose `bin` directory is on your `PATH`, or invoke the
+  server with its full path.
+- If the config file is missing, `geo-mcp --init` will create one. You can
+  also run without a config by setting `GEOMCP_EMAIL` in the environment.
 
 ---
 
-## Usage
+## HTTP API
 
-### MCP Server (stdio mode)
-For use with MCP clients like Claude Desktop:
+With the server running via `geo-mcp --http` (default port `8001`), the
+following endpoints are exposed:
 
-```bash
-cd geo_mcp_server
-python main.py --mode stdio
-```
+- `GET /` — server status
+- `GET /health` — health check
+- `GET /tools` — list all registered MCP tools
+- `POST /tools/call` — execute a tool with arguments
+- `GET /events` — server-sent events stream of tool calls
+- `GET /docs` — interactive Swagger UI
 
-### HTTP Server (localhost:8000)
-For HTTP API access:
-
-```bash
-# Option 1: Using the main script
-cd geo_mcp_server
-python main.py --mode http --host localhost --port 8000
-
-# Option 2: Using the convenience script
-python run_server.py
-```
-
-### HTTP API Endpoints
-
-Once the HTTP server is running on localhost:8000, you can access:
-
-- **Root**: `GET /` - Server status
-- **Health Check**: `GET /health` - Health check endpoint
-- **List Tools**: `GET /tools` - List all available tools
-- **Call Tool**: `POST /tools/call` - Execute a tool with arguments
-- **API Documentation**: `GET /docs` - Interactive API documentation (Swagger UI)
-
-### Example HTTP API Usage
+### Examples
 
 ```bash
 # List available tools
-curl http://localhost:8000/tools
+curl http://localhost:8001/tools
 
-# Search GEO Profiles
-curl -X POST http://localhost:8000/tools/call \
+# Search GEO Series
+curl -X POST http://localhost:8001/tools/call \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "search_geo_profiles",
-    "arguments": {
-      "term": "cancer",
-      "retmax": 5
-    }
-  }'
-
-# Search GEO Datasets
-curl -X POST http://localhost:8000/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "search_geo_datasets", 
-    "arguments": {
-      "term": "breast cancer",
-      "retmax": 10
-    }
+    "name": "search_geo_series",
+    "arguments": {"term": "breast cancer", "retmax": 5}
   }'
 ```
 
@@ -182,6 +154,10 @@ curl -X POST http://localhost:8000/tools/call \
 This MCP server provides access to all major GEO databases through the following tools:
 
 ### Search Tools
+
+- **`search_geo`** - Universal GEO search across GSE/GSM/GPL/GDS records, with
+  results bucketed by accession type. Pass `record_types` to filter.
+  - *Example searches*: "breast cancer", "GSE12345", "RNA-seq time course"
 
 - **`search_geo_profiles`** - Search gene expression profiles across different biological contexts
   - *Example searches*: "cancer", "breast cancer", "p53", "apoptosis"
@@ -241,7 +217,7 @@ Would you like me to download this dataset or search for others?
 - `GSE290848_family.soft.gz` — series, platform & sample info  
 - `GSE290848_metadata.xml` — detailed study metadata  
 
-**Location:** `/Users/matthiasflo/Documents/2025/GEO_MCP/geo_mcp_server/downloads/gse/GSE290848`  
+**Location:** `~/.local/share/geomcp/downloads/gse/GSE290848`  
 **Total size:** 0.01 MB  
 
 The dataset is ready for analysis. Let me know if you’d like to explore it further.
